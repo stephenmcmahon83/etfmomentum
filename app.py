@@ -34,12 +34,29 @@ regime_sma_days = st.sidebar.slider("Benchmark Trend Filter (SMA Days)", 50, 250
 st.sidebar.header("3. Execution Costs")
 tx_cost_bps = st.sidebar.number_input("Transaction Fee / Slippage per Trade (bps)", 0.0, 50.0, 5.0) / 10000
 
-# Fetch Data
+# Robust Market Data Downloader
 @st.cache_data(ttl=3600)
 def load_market_data(tickers, start, end):
-    data = yf.download(tickers, start=start, end=end)['Adj Close']
+    df = yf.download(tickers, start=start, end=end, auto_adjust=True)
+    
+    if isinstance(df.columns, pd.MultiIndex):
+        if 'Close' in df.columns.levels[0]:
+            data = df['Close']
+        elif 'Adj Close' in df.columns.levels[0]:
+            data = df['Adj Close']
+        else:
+            data = df.xs(df.columns.levels[0][0], axis=1, level=0)
+    else:
+        if 'Close' in df.columns:
+            data = df['Close']
+        elif 'Adj Close' in df.columns:
+            data = df['Adj Close']
+        else:
+            data = df
+
     if isinstance(data, pd.Series):
         data = data.to_frame()
+        
     return data.ffill().dropna(how='all')
 
 tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
