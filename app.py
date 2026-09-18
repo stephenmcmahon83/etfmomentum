@@ -172,7 +172,7 @@ strat_dd = (strat_equity - strat_equity.cummax()) / strat_equity.cummax()
 bench_dd = (bench_equity - bench_equity.cummax()) / bench_equity.cummax()
 
 fig.add_trace(go.Scatter(x=strat_dd.index, y=strat_dd.values, name="Strategy Drawdown", fill='tozeroy', line=dict(color="#d62728", width=1)), row=2, col=1)
-fig.add_trace(go.Scatter(x=bench_dd.index, y=bench_dd.values, name="Benchmark Drawdown", line=dict(color="#gray", width=1, dash="dot")), row=2, col=1)
+fig.add_trace(go.Scatter(x=bench_dd.index, y=bench_dd.values, name="Benchmark Drawdown", line=dict(color="gray", width=1, dash="dot")), row=2, col=1)
 
 fig.update_layout(title="Cumulative Return & Drawdown Analysis (Log Scale)", yaxis_type="log", height=650, margin=dict(l=20, r=20, t=40, b=20))
 st.plotly_chart(fig, use_container_width=True)
