@@ -18,7 +18,13 @@ default_universe = "VFINX, VUSTX, VEIEX, EWJ" if use_proxies else "SPY, TLT, EEM
 ticker_input = st.sidebar.text_input("Asset Universe (Comma-separated)", value=default_universe)
 
 benchmark_ticker = st.sidebar.text_input("Benchmark Ticker", value="VFINX" if use_proxies else "SPY")
-defensive_ticker = st.sidebar.text_input("Defensive / Risk-Off Asset", value="VUSTX" if use_proxies else "TLT")
+
+defensive_option = st.sidebar.selectbox("Defensive / Risk-Off Asset Choice", ["Cash (0% Return)", "Custom Ticker Symbol"])
+
+if defensive_option == "Custom Ticker Symbol":
+    defensive_ticker = st.sidebar.text_input("Defensive Asset Ticker", value="VUSTX" if use_proxies else "TLT").strip().upper()
+else:
+    defensive_ticker = "CASH"
 
 start_date = st.sidebar.date_input("Start Date", pd.to_datetime("1994-01-01") if use_proxies else pd.to_datetime("2004-11-18"))
 end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
@@ -37,6 +43,8 @@ tx_cost_bps = st.sidebar.number_input("Transaction Fee / Slippage per Trade (bps
 # Robust Market Data Downloader
 @st.cache_data(ttl=3600)
 def load_market_data(tickers, start, end):
+    if not tickers:
+        return pd.DataFrame()
     df = yf.download(tickers, start=start, end=end, auto_adjust=True)
     
     if isinstance(df.columns, pd.MultiIndex):
@@ -60,10 +68,16 @@ def load_market_data(tickers, start, end):
     return data.ffill().dropna(how='all')
 
 tickers_list = [t.strip().upper() for t in ticker_input.split(",") if t.strip()]
-all_tickers = list(set(tickers_list + [benchmark_ticker, defensive_ticker]))
+
+# Filter download tickers (exclude synthetic CASH ticker)
+download_tickers = list(set([t for t in tickers_list + [benchmark_ticker, defensive_ticker] if t and t != "CASH"]))
 
 with st.spinner("Downloading historical price data..."):
-    df_prices = load_market_data(all_tickers, start_date, end_date)
+    df_prices = load_market_data(download_tickers, start_date, end_date)
+
+# Inject Cash series if selected
+if defensive_ticker == "CASH":
+    df_prices["CASH"] = 1.0
 
 if df_prices.empty or benchmark_ticker not in df_prices.columns:
     st.error("Error loading data. Verify ticker symbols and date ranges.")
@@ -74,7 +88,8 @@ freq_code = 'ME' if rebalance_freq == "Monthly" else 'QE'
 df_reb_prices = df_prices.resample(freq_code).last()
 
 # Calculate Lookback Returns (Momentum)
-df_momentum = df_reb_prices[tickers_list].pct_change(periods=lookback_months)
+universe_tickers = [t for t in tickers_list if t in df_reb_prices.columns and t != "CASH"]
+df_momentum = df_reb_prices[universe_tickers].pct_change(periods=lookback_months)
 
 # Calculate Benchmark Moving Average
 df_prices['Bench_SMA'] = df_prices[benchmark_ticker].rolling(window=regime_sma_days).mean()
@@ -82,7 +97,8 @@ reb_regime = df_prices['Bench_SMA'].resample(freq_code).last()
 
 # Backtest Engine
 returns_df = df_prices.pct_change().fillna(0)
-portfolio_weights = pd.DataFrame(0.0, index=df_reb_prices.index, columns=tickers_list + [defensive_ticker])
+all_portfolio_assets = list(dict.fromkeys(universe_tickers + [defensive_ticker]))
+portfolio_weights = pd.DataFrame(0.0, index=df_reb_prices.index, columns=all_portfolio_assets)
 
 for idx in range(lookback_months, len(df_reb_prices)):
     date = df_reb_prices.index[idx]
